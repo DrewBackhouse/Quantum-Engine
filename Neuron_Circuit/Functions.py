@@ -1,6 +1,8 @@
 import cirq
+import cirq_google
 import numpy as np
-import networkx as nx
+# import networkx as nx
+import datetime
 
 def Trotter_Step_Circuit(Number_of_Fock_States, Number_of_Bosonic_Modes, Time, Displacement_Coefficent, Spin_Interaction_Coefficent, Spin_Boson_Interaction_Coefficent):
     qubits = cirq.LineQubit.range(Number_of_Bosonic_Modes * (Number_of_Fock_States+1))
@@ -45,15 +47,24 @@ def Compile_For_Willow(circuit, qubits, Qubit_Mapping):
     circuit = cirq.stratified_circuit(circuit, categories=_STRATIFY_CATEGORIES)
     return cirq.drop_empty_moments(circuit)
 
-def Sample_On_Quantum_Engine(circuit, engine, processor_id, Number_of_Shots):
+def Sample_On_Quantum_Engine(Project_id, Processor_id, Grid_Configuration, circuits, Number_of_Shots, Number_of_Trotter_Steps):
 
-    processor = engine.get_processor(processor_id)
-    sampler = processor.get_sampler()
+    engine = cirq_google.get_engine(Project_id)
+    processor = engine.get_processor(Processor_id)
+    config = processor.get_config(config_name= Grid_Configuration)
+    sampler = processor.get_sampler(circuits_per_job= Number_of_Trotter_Steps)
     print("Sampling circuit on Quantum Engine...\n")
-    results = sampler.run(circuit, repetitions=Number_of_Shots)
+    results = sampler.run_batch(circuits, repetitions=Number_of_Shots)
 
     return results
 
+def Job_To_Quantum_Engine(Project_id, Processor_id, circuits, Number_of_Shots, Number_of_Fock_States, Number_of_Bosonic_Modes, Displacement_Coefficent, Spin_Interaction_Coefficent, Number_of_Trotter_Steps, Total_time):
+    program_id = f'N{Number_of_Fock_States}L{Number_of_Bosonic_Modes}D{Displacement_Coefficent}J{Spin_Interaction_Coefficent}T{Total_time}Trot{Number_of_Trotter_Steps}-{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}'.replace('.', 'p')
+    job_id = f'Shots{Number_of_Shots}-{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}'
+    engine = cirq_google.get_engine(Project_id)
+    program = engine.create_program(circuits, program_id)
+    program.run_sweep(Processor_id, job_id= job_id, repetitions=Number_of_Shots)
+    return program_id, job_id
 
 def UnaryPostSelection(results, Number_of_Fock_States, Number_of_Bosonic_Modes):
     Boson_Results = results[:, :Number_of_Bosonic_Modes*Number_of_Fock_States].reshape(-1, Number_of_Bosonic_Modes, Number_of_Fock_States)     # (shots, modes, Fock states)
