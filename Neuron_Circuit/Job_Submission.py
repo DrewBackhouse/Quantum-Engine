@@ -16,8 +16,8 @@ Spin_Boson_Interaction_Coefficent = Displacement_Coefficent * (Number_of_Fock_St
 #---Simulation Parameters---#
 
 Total_time = 25
-Number_of_Trotter_Steps = 25
-Number_of_Shots = 1000
+Number_of_Trotter_Steps = 2
+Number_of_Shots = 5
 Project_id= "quantum-neuron-network"
 Processor_id = 'WLA1HHPR00V07_5B_MINT'
 Grid_Configuration = 'cz_104'
