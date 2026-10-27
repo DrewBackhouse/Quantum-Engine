@@ -1,4 +1,5 @@
 import os
+import re
 import cirq
 import cirq_google
 import numpy as np
@@ -12,13 +13,12 @@ from Functions import UnaryPostSelection
 Project_id = "quantum-neuron-network"
 Program_id = 'N8L1D1J0p1T25Trot100-20261027-120235'
 Job_id = 'Shots2000-20261027-120235'
-Number_of_Fock_States = 8
-Number_of_Bosonic_Modes = 1
-Total_Time = 25
-Number_of_Trotter_Steps = 25
-Number_of_Shots = 1000
 
-# Should encode this info in the measurement structure such that it does not need to be defined here.
+Parameters = re.match(r'N(\d+)L(\d+)D([\dp]+)J([\dp]+)T([\dp]+)Trot(\d+)-', Program_id)
+Number_of_Fock_States = int(Parameters.group(1))
+Number_of_Bosonic_Modes = int(Parameters.group(2))
+Total_Time = float(Parameters.group(5).replace('p', '.'))
+Number_of_Trotter_Steps = int(Parameters.group(6))
 
 #---Fetch results---#
 
@@ -28,6 +28,7 @@ circuits = program.get_circuits()
 job = program.get_job(Job_id)
 results = job.results()
 all_bits = np.stack([r.measurements['m'].astype(int) for r in results])
+assert len(results) == Number_of_Trotter_Steps, f'Expected {Number_of_Trotter_Steps} circuits, job returned {len(results)}'
 
 #---Post-processing of results---#
 
