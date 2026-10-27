@@ -16,8 +16,8 @@ Spin_Boson_Interaction_Coefficent = Displacement_Coefficent * (Number_of_Fock_St
 #---Simulation Parameters---#
 
 Total_time = 25
-Number_of_Trotter_Steps = 2
-Number_of_Shots = 5
+Number_of_Trotter_Steps = 100
+Number_of_Shots = 2000
 Project_id= "quantum-neuron-network"
 Processor_id = 'WLA1HHPR00V07_5B_MINT'
 Grid_Configuration = 'cz_104'
@@ -38,6 +38,8 @@ for steps in range(Number_of_Trotter_Steps):
     circuits.append(Full_Trotterised_Circuit_Stratified)
 
 #---Job submission---#
+
+input("Send to quantum engine?")
 
 program_id, job_id = Job_To_Quantum_Engine(Project_id, Processor_id, circuits, Number_of_Shots, Number_of_Fock_States, Number_of_Bosonic_Modes, Displacement_Coefficent, Spin_Interaction_Coefficent, Number_of_Trotter_Steps, Total_time)
 print(f"Submitted batch job: program_id = {program_id}, job_id = {job_id}")
