@@ -8,17 +8,22 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 from Functions import UnaryPostSelection
 
+
 #---Job details---#
 
 Project_id = "quantum-neuron-network"
-Program_id = 'N8L1D1J0p1T25Trot100-20261027-120235'
-Job_id = 'Shots2000-20261027-120235'
+Program_id = 'N8L1D1J0p1T50Trot70-20261028-171106'
+Job_id = 'Shots200Twirls10-20261028-171106'
 
 Parameters = re.match(r'N(\d+)L(\d+)D([\dp]+)J([\dp]+)T([\dp]+)Trot(\d+)-', Program_id)
+Twirl_Match = re.match(r'Shots(\d+)Twirls(\d+)-', Job_id)
 Number_of_Fock_States = int(Parameters.group(1))
 Number_of_Bosonic_Modes = int(Parameters.group(2))
 Total_Time = float(Parameters.group(5).replace('p', '.'))
 Number_of_Trotter_Steps = int(Parameters.group(6))
+Pauli_Twirling_Instances = int(Twirl_Match.group(2)) if Twirl_Match else 0
+Circuits_Per_Timestep = max(1, Pauli_Twirling_Instances)
+
 
 #---Fetch results---#
 
@@ -26,9 +31,13 @@ engine = cirq_google.get_engine(Project_id)
 program = engine.get_program(Program_id)
 circuits = program.get_circuits()
 job = program.get_job(Job_id)
+#print(job.failure())
+#input()
 results = job.results()
 all_bits = np.stack([r.measurements['m'].astype(int) for r in results])
-assert len(results) == Number_of_Trotter_Steps, f'Expected {Number_of_Trotter_Steps} circuits, job returned {len(results)}'
+assert len(results) == Number_of_Trotter_Steps * Circuits_Per_Timestep, f'Expected {Number_of_Trotter_Steps * Circuits_Per_Timestep} circuits, job returned {len(results)}'
+all_bits = all_bits.reshape(Number_of_Trotter_Steps, -1, all_bits.shape[-1])
+
 
 #---Post-processing of results---#
 
@@ -42,6 +51,7 @@ for j in range(Number_of_Trotter_Steps):
     Boson_Occupation_Number = np.sum(Boson_Results * np.arange(0, Number_of_Fock_States, 1), axis=1)
     Timestep_Results = np.concatenate([Boson_Occupation_Number, Averaged_Results[Number_of_Bosonic_Modes*Number_of_Fock_States:]])
     All_Results.append(Timestep_Results)
+
 
 #---Plots---#
 
@@ -75,10 +85,11 @@ ax_survival.set_ylabel('Post-selection survival rate')
 ax_survival.set_ylim(0, 1)
 ax_survival.set_xlabel('Time')
 
+fig.suptitle(f'L={Number_of_Bosonic_Modes}, N={Number_of_Fock_States}, {Number_of_Trotter_Steps} Trotter steps')
 plt.tight_layout()
 
-with PdfPages(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Figures', f'{Program_id}_{Job_id}.pdf')) as pdf:
+Program_Name = re.sub(r'-\d{8}-\d{6}$', '', Program_id)
+Job_Name = re.sub(r'-\d{8}-\d{6}$', '', Job_id)
+with PdfPages(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Figures', f'{Program_Name}_{Job_Name}.pdf')) as pdf:
     pdf.savefig(fig_circuit, bbox_inches='tight')
     pdf.savefig(fig, bbox_inches='tight')
-
-plt.show()
