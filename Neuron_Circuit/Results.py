@@ -6,14 +6,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
-from Functions import UnaryPostSelection
+from Functions import UnaryPostSelection, Plot_Qubit_Mapping
 
 
 #---Job details---#
 
 Project_id = "quantum-neuron-network"
-Program_id = 'N8L1D1J0p1T50Trot70-20261028-171106'
-Job_id = 'Shots200Twirls10-20261028-171106'
+Program_id = 'N8L3D1J0p1T25Trot44-20261030-160946'
+Job_id = 'Shots200Twirls10-20261030-160946'
 
 Parameters = re.match(r'N(\d+)L(\d+)D([\dp]+)J([\dp]+)T([\dp]+)Trot(\d+)-', Program_id)
 Twirl_Match = re.match(r'Shots(\d+)Twirls(\d+)-', Job_id)
@@ -42,15 +42,23 @@ all_bits = all_bits.reshape(Number_of_Trotter_Steps, -1, all_bits.shape[-1])
 #---Post-processing of results---#
 
 All_Results = []
-Survival_Rate = []
+Survival_Rate = []          # Per mode (and its attached spin): fraction of shots where that register is unary
+All_Valid_Rate = []         # Fraction of shots where every register is unary
+Valid_Shot_Counts = []
 for j in range(Number_of_Trotter_Steps):
-    Full_Results_Postselected = UnaryPostSelection(all_bits[j], Number_of_Fock_States, Number_of_Bosonic_Modes)
-    Survival_Rate.append(len(Full_Results_Postselected) / len(all_bits[j]))
-    Averaged_Results = Full_Results_Postselected.mean(axis=0)
-    Boson_Results = Averaged_Results[:Number_of_Bosonic_Modes*Number_of_Fock_States].reshape(Number_of_Bosonic_Modes, Number_of_Fock_States)
-    Boson_Occupation_Number = np.sum(Boson_Results * np.arange(0, Number_of_Fock_States, 1), axis=1)
-    Timestep_Results = np.concatenate([Boson_Occupation_Number, Averaged_Results[Number_of_Bosonic_Modes*Number_of_Fock_States:]])
+    Boson_Results, Spin_Results, Unary_Mask = UnaryPostSelection(all_bits[j], Number_of_Fock_States, Number_of_Bosonic_Modes)
+    Valid_Shots = Unary_Mask.sum(axis=0)     # (modes,) shots kept per mode
+    Valid_Shot_Counts.append(Valid_Shots)
+    Survival_Rate.append(Valid_Shots / len(all_bits[j]))
+    All_Valid_Rate.append(np.all(Unary_Mask, axis=1).mean())
+    Occupation_Per_Shot = Boson_Results @ np.arange(Number_of_Fock_States)     # (shots, modes)
+    with np.errstate(invalid='ignore', divide='ignore'):
+        Boson_Occupation_Number = (Occupation_Per_Shot * Unary_Mask).sum(axis=0) / Valid_Shots     # Average over each mode's valid shots only, NaN if none
+        Spin_Probability = (Spin_Results * Unary_Mask).sum(axis=0) / Valid_Shots     # Spin j averaged over mode j's valid shots only
+    Timestep_Results = np.concatenate([Boson_Occupation_Number, Spin_Probability])
     All_Results.append(Timestep_Results)
+Survival_Rate = np.array(Survival_Rate)
+Valid_Shot_Counts = np.array(Valid_Shot_Counts)
 
 
 #---Plots---#
@@ -62,6 +70,17 @@ Boson_Occupation_Data = All_Results[:, :Number_of_Bosonic_Modes]
 Spin_Data = All_Results[:, Number_of_Bosonic_Modes:]     # Probability each spin qubit is in |1>
 
 Qubit_Order = next(op for op in circuits[0].all_operations() if cirq.is_measurement(op)).qubits  # Measurement keeps the logical qubit order
+try:
+    config = job.get_config()  # Calibration snapshot the job actually ran with
+except ValueError as e:
+    config = None
+    print(f'No calibration for job ({e})')
+if config is not None:
+    fig_mapping = Plot_Qubit_Mapping(config.calibration, list(Qubit_Order), Number_of_Bosonic_Modes, Number_of_Fock_States, f'{config.processor_id} snapshot {config.snapshot_id}: L={Number_of_Bosonic_Modes}, N={Number_of_Fock_States}')
+else:
+    fig_mapping = None
+    print('Skipping qubit mapping figure')
+
 Circuit_Text = circuits[0].to_text_diagram(qubit_order=Qubit_Order)
 Circuit_Lines = Circuit_Text.splitlines()
 fig_circuit = plt.figure(figsize=(max(8, 0.1*max(len(l) for l in Circuit_Lines)), max(2, 0.2*len(Circuit_Lines))))
@@ -80,16 +99,20 @@ ax_spin.set_ylabel('Average spin state P(|1⟩)')
 ax_spin.set_ylim(0, 1)
 ax_spin.legend()
 
-ax_survival.plot(Time_Data, Survival_Rate, marker='o', color='k')
+for j in range(Number_of_Bosonic_Modes):
+    ax_survival.plot(Time_Data, Survival_Rate[:, j], marker='o', label=f'Mode {j}')
+ax_survival.plot(Time_Data, All_Valid_Rate, linestyle='--', color='k', label='All modes')
 ax_survival.set_ylabel('Post-selection survival rate')
 ax_survival.set_ylim(0, 1)
+ax_survival.legend()
 ax_survival.set_xlabel('Time')
 
 fig.suptitle(f'L={Number_of_Bosonic_Modes}, N={Number_of_Fock_States}, {Number_of_Trotter_Steps} Trotter steps')
 plt.tight_layout()
 
 Program_Name = re.sub(r'-\d{8}-\d{6}$', '', Program_id)
-Job_Name = re.sub(r'-\d{8}-\d{6}$', '', Job_id)
-with PdfPages(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Figures', f'{Program_Name}_{Job_Name}.pdf')) as pdf:
+with PdfPages(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Figures', f'{Program_Name}_{Job_id}_NewPostSelection.pdf')) as pdf:
+    if fig_mapping is not None:
+        pdf.savefig(fig_mapping, bbox_inches='tight')
     pdf.savefig(fig_circuit, bbox_inches='tight')
     pdf.savefig(fig, bbox_inches='tight')
